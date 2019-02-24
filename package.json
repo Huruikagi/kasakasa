@@ -1,0 +1,7 @@
+{
+  "devDependencies": {
+    "@types/google-apps-script": "^0.0.37",
+    "tslint": "^5.13.0",
+    "typescript": "^3.3.3333"
+  }
+}
