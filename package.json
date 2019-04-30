@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "build": "tsc"
+  },
   "devDependencies": {
     "@types/google-apps-script": "^0.0.37",
     "tslint": "^5.13.0",
