@@ -10,7 +10,8 @@ enum RANGES {
     longitude = "longitude",
     names = "userNames",
 }
-
+/** OpenWeatherMapで検索する対象の都市 */
+const CITY = "Shinjuku,JP";
 /** ユーザー名を設定するスプレッドシート中の「名前付き範囲」だよ */
 const NAMES_RANGE = "userNames";
 
@@ -36,7 +37,7 @@ function onTime() {
             return `subject:(日報/${userName}/${todayStr}) -(label:${BOT_READ_LABEL_NAME})`;
         })
         .map((query) => GmailApp.search(query, 0, 1)[0])
-        .filter((thread) => thread); // 見つからなかった分を除去
+        .filter((thread) => thread); // 見つからなかった分(=undefined)を除去
 
     // 誰も見つからなかったらここで処理終了
     if (todayDailyReports.length === 0) { return; }
@@ -45,18 +46,17 @@ function onTime() {
     const label = GmailApp.getUserLabelByName(BOT_READ_LABEL_NAME);
     todayDailyReports.forEach((thread) => thread.addLabel(label));
 
-    if (isRainy()) {
-        // TODO: 雨降ってるよ通知
-    }
-}
+    // OpenWeatherMapのAPIを呼び出す
+    const currentWeather = getCurrentWeather();
 
-/**
- * GASは同期的にやるのでコールバック関数は不要だよ。
- * @return 雨降ってたらtrue
- */
-function isRainy(): boolean {
-    // TODO: 天気APIに接続して雨が降っているか確認
-    return true;
+    // OpenWeatherMap的にidが800未満だと悪天候
+    if (currentWeather.weather.some((w) => w.id < 800)) {
+        const response = createResponseBody(currentWeather);
+        todayDailyReports.forEach((thread) => thread.reply(response, {
+            from: SECRETS.botAddress,
+            name: "kasakasa-Bot☂️",
+        }));
+    }
 }
 
 /**
@@ -95,8 +95,37 @@ function dateStringOf(date: Date): string {
     return `${yyyy}${mm}${dd}`;
 }
 
+/** OpenWeatherMapのAPIを叩いて天気情報を取ってくる。 */
+function getCurrentWeather(): IWeatherSearchResponse {
+    const url =
+        `http://api.openweathermap.org/data/2.5/weather?q=${CITY}&APPID=${SECRETS.openWeatherMapApiKey}`;
+    const fetchResponse = UrlFetchApp.fetch(url).getContentText("UTF-8");
+    return JSON.parse(fetchResponse) as IWeatherSearchResponse;
+}
+
+/** 返信メールの本文を作る。 */
+function createResponseBody(currentWeather: IWeatherSearchResponse): string {
+    return currentWeather.weather.reduce((acc, cur) =>
+        acc + "\n" + cur.description
+    , "雨降ってるかも。傘持って帰りませんか。\n\n直近の天気：") +
+    "\nhttps://openweathermap.org/city/1850144";
+}
+
+/** OpenWeatherMap current APIのレスポンス形式（使うとこだけ） */
+interface IWeatherSearchResponse {
+    weather: Array<{
+        "id": number,
+        "main": string,
+        "description": string,
+    }>;
+}
+
 /** みせられない設定情報はこんな感じ */
 interface ISecretConfig {
     /** 名前とか場所とかの設定情報を保存するスプレッドシート */
     spreadSheetId: string;
+    /** APIキー */
+    openWeatherMapApiKey: string;
+    /** メールの返信時に使うGmailエイリアス */
+    botAddress: string;
 }
