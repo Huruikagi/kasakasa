@@ -2,6 +2,8 @@ import GmailThread = GoogleAppsScript.Gmail.GmailThread;
 import Spreadsheet = GoogleAppsScript.Spreadsheet.Spreadsheet;
 import Range = GoogleAppsScript.Spreadsheet.Range;
 
+/** Bot返信メールで使う名前だよ。 */
+const BOT_FROM_NAME = "kasakasa-Bot☂️";
 /** チェック済みのメールに付与するGmailラベルの名前だよ。 */
 const BOT_READ_LABEL_NAME = "BOT_READ";
 /** スプレッドシート中の「名前付き範囲」の値だよ */
@@ -32,12 +34,18 @@ function onTime() {
     // 今日分の日報を検索する。
     const todayDailyReports: GmailThread[] = getTargetNames(sourceSheet)
         .map((userName) => {
+            // 名前から検索クエリを生成。
             // 日付が今日で、まだチェックしていない分だけ確認
             const todayStr = dateStringOf(new Date());
-            return `subject:(日報/${userName}/${todayStr}) -(label:${BOT_READ_LABEL_NAME})`;
+            return `subject:"日報/${userName}/${todayStr}" -label:${BOT_READ_LABEL_NAME}`;
         })
+        // Gmailで検索を実行
         .map((query) => GmailApp.search(query, 0, 1)[0])
-        .filter((thread) => thread); // 見つからなかった分(=undefined)を除去
+        // 見つからなかった分(undefinedになってる)を除去
+        .filter((thread) => thread)
+        // Botが返信済みではないものだけ残す
+        .filter((thread) => !thread.getMessages().some(
+            (message) => message.getFrom() === `"${BOT_FROM_NAME}" <${SECRETS.botAddress}>`));
 
     // 誰も見つからなかったらここで処理終了
     if (todayDailyReports.length === 0) { return; }
@@ -54,7 +62,7 @@ function onTime() {
         const response = createResponseBody(currentWeather);
         todayDailyReports.forEach((thread) => thread.reply(response, {
             from: SECRETS.botAddress,
-            name: "kasakasa-Bot☂️",
+            name: BOT_FROM_NAME,
         }));
     }
 }
