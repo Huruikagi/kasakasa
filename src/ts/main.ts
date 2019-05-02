@@ -1,49 +1,23 @@
 import GmailThread = GoogleAppsScript.Gmail.GmailThread;
-import Spreadsheet = GoogleAppsScript.Spreadsheet.Spreadsheet;
-import Range = GoogleAppsScript.Spreadsheet.Range;
 
 /** Bot返信メールで使う名前だよ。 */
 const BOT_FROM_NAME = "kasakasa-Bot☂️";
 /** チェック済みのメールに付与するGmailラベルの名前だよ。 */
 const BOT_READ_LABEL_NAME = "BOT_READ";
-/** スプレッドシート中の「名前付き範囲」の値だよ */
-enum RANGES {
-    latitude = "latitude",
-    longitude = "longitude",
-    names = "userNames",
-}
 /** OpenWeatherMapで検索する対象の都市 */
 const CITY = "Shinjuku,JP";
-/** ユーザー名を設定するスプレッドシート中の「名前付き範囲」だよ */
-const NAMES_RANGE = "userNames";
-
-/** メインとなる関数の予定だよ。 */
-function kasakasa() {
-    // TODO: 定期実行
-    onTime();
-}
 
 /**
  * GASだとメール通知を拾ったりはできないのでこの関数を定期的に実行することで
  * 日報が来ているかどうかをチェックするよ。
  */
-function onTime() {
+function kasakasa() {
 
-    const sourceSheet: Spreadsheet = SpreadsheetApp.openById(SECRETS.spreadSheetId);
+    // 24時間以内にBotあてに来たメールを検索
+    const query = `subject:("日報/") to:(${SECRETS.botAddress}) -label:(${BOT_READ_LABEL_NAME}) newer_than:1d`;
 
-    // 今日分の日報を検索する。
-    const todayDailyReports: GmailThread[] = getTargetNames(sourceSheet)
-        .map((userName) => {
-            // 名前から検索クエリを生成。
-            // 日付が今日で、まだチェックしていない分だけ確認
-            const todayStr = dateStringOf(new Date());
-            return `subject:"日報/${userName}/${todayStr}" -label:${BOT_READ_LABEL_NAME}`;
-        })
-        // Gmailで検索を実行
-        .map((query) => GmailApp.search(query, 0, 1)[0])
-        // 見つからなかった分(undefinedになってる)を除去
-        .filter((thread) => thread)
-        // Botが返信済みではないものだけ残す
+    // 検索実行。Botが返信済みのものは除外しておく。
+    const todayDailyReports: GmailThread[] = GmailApp.search(query, 0, 1)
         .filter((thread) => !thread.getMessages().some(
             (message) => message.getFrom() === `"${BOT_FROM_NAME}" <${SECRETS.botAddress}>`));
 
@@ -60,47 +34,11 @@ function onTime() {
     // OpenWeatherMap的にidが800未満だと悪天候
     if (currentWeather.weather.some((w) => w.id < 800)) {
         const response = createResponseBody(currentWeather);
-        todayDailyReports.forEach((thread) => thread.reply(response, {
+        todayDailyReports.forEach((thread) => thread.getMessages()[0].reply(response, {
             from: SECRETS.botAddress,
             name: BOT_FROM_NAME,
         }));
     }
-}
-
-/**
- * @param spreadsheet 対象となるいい感じにデータが入ったスプレッドシートオブジェクト
- * @return 記載されている氏名の配列
- */
-function getTargetNames(spreadsheet: Spreadsheet): string[] {
-    const names: string[] = [];
-    const namesRange: Range = spreadsheet.getRangeByName(RANGES.names);
-    for (let i = 1; i <= namesRange.getNumRows(); i++) {
-        const value = namesRange.getCell(i, 1).getValue() as string;
-        if (value) {
-            names.push(value);
-        } else {
-            break;
-        }
-    }
-    return names;
-}
-
-/**
- * 20190205形式の文字列を作るよ。JavaScriptには標準でformatがないよ。
- * @param date もととなる日付
- */
-function dateStringOf(date: Date): string {
-    const pud = (src: number) => {
-        if (src < 10) {
-            return "0" + src;
-        } else {
-            return src;
-        }
-    };
-    const yyyy = date.getFullYear();
-    const mm = pud(date.getMonth() + 1);
-    const dd = pud(date.getDate());
-    return `${yyyy}${mm}${dd}`;
 }
 
 /** OpenWeatherMapのAPIを叩いて天気情報を取ってくる。 */
@@ -113,10 +51,10 @@ function getCurrentWeather(): IWeatherSearchResponse {
 
 /** 返信メールの本文を作る。 */
 function createResponseBody(currentWeather: IWeatherSearchResponse): string {
-    return currentWeather.weather.reduce((acc, cur) =>
-        acc + "\n" + cur.description
-    , "雨降ってるかも。傘持って帰りませんか。\n\n直近の天気：") +
-    "\nhttps://openweathermap.org/city/1850144";
+    return "雨降ってるかも。傘持って帰りませんか。\n\n直近の天気：" +
+        currentWeather.weather.reduce((acc, cur) => acc + "\n" + cur.description, "")
+        + "\nhttps://openweathermap.org/city/1850144"
+        + "\n\ngithub: https://github.com/Huruikagi/kasakasa";
 }
 
 /** OpenWeatherMap current APIのレスポンス形式（使うとこだけ） */
@@ -130,8 +68,6 @@ interface IWeatherSearchResponse {
 
 /** みせられない設定情報はこんな感じ */
 interface ISecretConfig {
-    /** 名前とか場所とかの設定情報を保存するスプレッドシート */
-    spreadSheetId: string;
     /** APIキー */
     openWeatherMapApiKey: string;
     /** メールの返信時に使うGmailエイリアス */
